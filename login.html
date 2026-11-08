@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>微信登录（模拟）</title>
+  <style>
+    body { font-family: sans-serif; display: flex; justify-content: center; margin-top: 80px; }
+    .box { width: 320px; }
+    input { width: 100%; padding: 10px; margin: 8px 0; box-sizing: border-box; border: 2px solid #000; border-radius: 4px; }
+    button { width: 100%; padding: 10px; background: #07c160; color: #fff; border: none; cursor: pointer; border-radius: 4px; }
+    button:disabled { background: #999; cursor: not-allowed; }
+    .error { color: red; font-size: 13px; min-height: 18px; }
+    .tab { display: flex; margin-bottom: 12px; }
+    .tab span { flex: 1; text-align: center; padding: 8px; cursor: pointer; border-bottom: 2px solid transparent; }
+    .tab .active { border-bottom-color: #07c160; }
+    .hidden { display: none; }
+    .forgot { text-align: right; font-size: 13px; margin: -4px 0 8px; }
+    .forgot a { color: #576b95; text-decoration: none; }
+
+    /* 🚨 强制隐藏浏览器自带小眼睛 */
+    input[type="password"]::-ms-reveal,
+    input[type="password"]::-ms-clear {
+      display: none !important;
+    }
+    input[type="password"]::-webkit-credentials-auto-fill-button {
+      visibility: hidden !important;
+      display: none !important;
+      pointer-events: none;
+      position: absolute;
+      right: 0;
+    }
+
+    /* 眼睛图标定位 */
+    .eye-icon {
+      position: absolute;
+      right: 10px;
+      top: 20px;
+      cursor: pointer;
+      width: 20px;
+      height: 20px;
+      color: #999; /* 永远保持灰色 */
+    }
+  </style>
+</head>
+<body>
+<div class="box">
+  <div class="tab">
+    <span id="tabPwd" class="active" onclick="switchTab('pwd')">账号密码登录</span>
+    <span id="tabSms" onclick="switchTab('sms')">短信验证码登录</span>
+  </div>
+
+  <!-- 账号密码登录 -->
+  <div id="pwdPanel">
+    <input id="account" placeholder="请输入账号/手机号" />
+    
+    <div style="position: relative;">
+      <input id="password" type="password" placeholder="请输入密码" autocomplete="current-password" style="padding-right: 40px;" />
+      
+      <!-- 唯一的 SVG 容器 -->
+      <svg onclick="togglePassword()" class="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <!-- 1. 闭眼（有一横的）：默认显示 -->
+        <g id="eyeClosed">
+          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+          <line x1="1" y1="1" x2="23" y2="23"></line>
+        </g>
+        
+        <!-- 2. 睁眼：默认隐藏 -->
+        <g id="eyeOpen" style="display: none;">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+          <circle cx="12" cy="12" r="3"></circle>
+        </g>
+      </svg>
+    </div>
+    
+    <div class="forgot"><a href="forgot-password.html">忘记密码？</a></div>
+    <div class="error" id="pwdError"></div>
+    <button id="loginBtn" onclick="login()">登录</button>
+  </div>
+
+  <!-- 短信验证码登录 -->
+  <div id="smsPanel" class="hidden">
+    <input id="phone" placeholder="请输入手机号" />
+    <div style="display:flex; gap:8px;">
+      <input id="code" placeholder="请输入验证码" style="flex:1;" />
+      <button id="sendCodeBtn" onclick="sendCode()" style="width:110px;">获取验证码</button>
+    </div>
+    <div class="error" id="smsError"></div>
+    <button id="smsLoginBtn" onclick="smsLogin()">登录</button>
+  </div>
+</div>
+
+<script>
+  const DEFAULT_USERS = {
+    '13800000001': { password: 'Test@123', status: 'normal' },
+    '13700000003': { password: 'Test@123', status: 'banned' },
+  };
+
+  function loadUsers() {
+    const saved = localStorage.getItem('mockUsers');
+    if (saved) return JSON.parse(saved);
+    localStorage.setItem('mockUsers', JSON.stringify(DEFAULT_USERS));
+    return DEFAULT_USERS;
+  }
+
+  const USERS = loadUsers();
+  let smsCodeStore = {}; 
+  let clickLock = false;
+
+  function switchTab(type) {
+    document.getElementById('tabPwd').classList.toggle('active', type === 'pwd');
+    document.getElementById('tabSms').classList.toggle('active', type === 'sms');
+    document.getElementById('pwdPanel').classList.toggle('hidden', type !== 'pwd');
+    document.getElementById('smsPanel').classList.toggle('hidden', type !== 'sms');
+  }
+
+  // 切换逻辑：根据当前输入框状态，显示对应的图标
+  function togglePassword() {
+    const pwdInput = document.getElementById('password');
+    const eyeClosed = document.getElementById('eyeClosed');
+    const eyeOpen = document.getElementById('eyeOpen');
+    
+    if (pwdInput.type === 'password') {
+      pwdInput.type = 'text';            // 变明文
+      eyeClosed.style.display = 'none';  // 隐藏“有一横”的眼睛
+      eyeOpen.style.display = 'block';   // 显示“正常”的眼睛
+    } else {
+      pwdInput.type = 'password';        // 变密文
+      eyeClosed.style.display = 'block'; // 显示“有一横”的眼睛
+      eyeOpen.style.display = 'none';    // 隐藏“正常”的眼睛
+    }
+  }
+
+  function login() {
+    if (clickLock) return; 
+    const account = document.getElementById('account').value.trim();
+    const password = document.getElementById('password').value;
+    const errorEl = document.getElementById('pwdError');
+    errorEl.textContent = '';
+
+    if (!account) { errorEl.textContent = '请输入账号'; return; }
+    if (!password) { errorEl.textContent = '请输入密码'; return; }
+
+    clickLock = true;
+    const btn = document.getElementById('loginBtn');
+    btn.disabled = true;
+    btn.textContent = '登录中...';
+
+    setTimeout(() => {
+      const user = USERS[account];
+      if (!user || user.password !== password) {
+        errorEl.textContent = '账号或密码错误'; 
+      } else if (user.status === 'banned') {
+        errorEl.textContent = '账号已被限制登录';
+      } else {
+        location.href = 'verify.html';
+        return;
+      }
+      clickLock = false;
+      btn.disabled = false;
+      btn.textContent = '登录';
+    }, 800);
+  }
+
+  function sendCode() {
+    const phone = document.getElementById('phone').value.trim();
+    const errorEl = document.getElementById('smsError');
+    errorEl.textContent = '';
+    if (!phone) { errorEl.textContent = '请输入手机号'; return; }
+
+    const code = '123456';
+    smsCodeStore[phone] = { code, expireAt: Date.now() + 5 * 60 * 1000, used: false };
+
+    const btn = document.getElementById('sendCodeBtn');
+    let sec = 60;
+    btn.disabled = true;
+    const timer = setInterval(() => {
+      btn.textContent = `${sec}s 后重发`;
+      sec--;
+      if (sec < 0) {
+        clearInterval(timer);
+        btn.disabled = false;
+        btn.textContent = '获取验证码';
+      }
+    }, 1000);
+  }
+
+  function smsLogin() {
+    const phone = document.getElementById('phone').value.trim();
+    const code = document.getElementById('code').value.trim();
+    const errorEl = document.getElementById('smsError');
+    errorEl.textContent = '';
+
+    if (!phone) { errorEl.textContent = '请输入手机号'; return; }
+    if (!code) { errorEl.textContent = '请输入验证码'; return; }
+
+    const record = smsCodeStore[phone];
+    if (!record) { errorEl.textContent = '请先获取验证码'; return; }
+    if (record.used) { errorEl.textContent = '验证码已失效，请重新获取'; return; }
+    if (Date.now() > record.expireAt) { errorEl.textContent = '验证码已失效，请重新获取'; return; }
+    if (record.code !== code) { errorEl.textContent = '验证码错误'; return; }
+
+    record.used = true; 
+    location.href = 'verify.html';
+  }
+</script>
+</body>
+</html>

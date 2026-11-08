@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>安全验证（模拟）</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; margin-top: 120px; }
+    .slider { width: 280px; height: 44px; background: #eee; margin: 20px auto; position: relative; border-radius: 22px; }
+    .handle { width: 44px; height: 44px; background: #07c160; border-radius: 50%; position: absolute; left: 0; cursor: pointer; }
+    .home { display: none; }
+  </style>
+</head>
+<body>
+  <div id="verifyBox">
+    <h3>安全验证</h3>
+    <p>请从左向右滑动解锁</p>
+    <div class="slider" id="slider">
+      <div class="handle" id="handle"></div>
+    </div>
+  </div>
+
+  <div class="home" id="home">
+    <h2>微信首页（模拟）</h2>
+    <p>登录成功，登录态已保存</p>
+  </div>
+
+<script>
+  const slider = document.getElementById('slider');
+  const handle = document.getElementById('handle');
+  let dragging = false;
+
+  handle.addEventListener('mousedown', () => dragging = true);
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    const max = slider.clientWidth - handle.clientWidth;
+    const left = parseInt(handle.style.left || '0', 10);
+    if (left >= max - 5) {
+      document.getElementById('verifyBox').style.display = 'none';
+      document.getElementById('home').style.display = 'block';
+      localStorage.setItem('loggedIn', '1');
+    } else {
+      handle.style.left = '0px';
+    }
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const rect = slider.getBoundingClientRect();
+    let left = e.clientX - rect.left - handle.clientWidth / 2;
+    const max = slider.clientWidth - handle.clientWidth;
+    left = Math.max(0, Math.min(left, max));
+    handle.style.left = left + 'px';
+  });
+</script>
+</body>
+</html>
